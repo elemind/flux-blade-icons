@@ -48,7 +48,7 @@ readonly class IconSetRegistry
     {
         return collect($this->all())
             ->when($query !== '', fn ($collection) => $collection->filter(
-                fn (array $set): bool => str($set['name'])->lower()->contains(str($query)->lower())
+                fn (array $set): bool => str($set['name'])->lower()->contains(str($query)->lower()->toString())
             ))
             ->mapWithKeys(fn (array $set, string $key): array => [$key => $set['name']])
             ->all();

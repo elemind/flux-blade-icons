@@ -96,7 +96,7 @@ class FluxBladeIconsCommand extends Command
                     label: 'Which icons would you like to import?',
                     options: fn (string $value) => collect($iconList)
                         ->when($value !== '', fn ($collection) => $collection->filter(
-                            fn (string $name): bool => str($name)->lower()->contains(str($value)->lower())
+                            fn (string $name): bool => str($name)->lower()->contains(str($value)->lower()->toString())
                         ))
                         ->mapWithKeys(fn (string $name): array => [
                             $name => in_array($name, $publishedIcons, true)
