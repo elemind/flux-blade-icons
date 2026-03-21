@@ -36,12 +36,24 @@ You can publish the config file with:
 php artisan vendor:publish --tag="flux-blade-icons-config"
 ```
 
-This is the contents of the published config file:
+The published config file includes the default registry and a separate override section:
 
 ```php
 return [
+    'output_path' => resource_path('views/flux/icon'),
+    'cache_ttl' => 86400,
+
+    'default_icon_sets' => [
+        // Built-in icon sets shipped with the package...
+    ],
+
+    'icon_sets' => [
+        // Add custom sets or override an existing built-in key.
+    ],
 ];
 ```
+
+Use `icon_sets` to add your own packages or override one of the built-in keys without editing the package defaults.
 
 Optionally, you can publish the views using
 
