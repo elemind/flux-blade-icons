@@ -27,8 +27,28 @@ $githubSubdirResponse = [
     ['name' => 'check.svg', 'type' => 'file'],
 ];
 
+function cleanupIconDirectory(string $iconDir): void
+{
+    if (! is_dir($iconDir)) {
+        return;
+    }
+
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($iconDir, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+
+    foreach ($files as $file) {
+        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
+    }
+
+    rmdir($iconDir);
+}
+
 beforeEach(function (): void {
     $this->iconDir = storage_path('framework/testing/flux-blade-icons');
+
+    cleanupIconDirectory($this->iconDir);
 
     config()->set('flux-blade-icons.output_path', $this->iconDir);
     config()->set('flux-blade-icons.icon_sets', []);
@@ -40,21 +60,15 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    if (! is_dir($this->iconDir)) {
-        return;
-    }
-
-    $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($this->iconDir, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
-
-    foreach ($files as $file) {
-        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-    }
-
-    rmdir($this->iconDir);
+    cleanupIconDirectory($this->iconDir);
 });
+
+function invokeCommandMethod(object $command, string $method, mixed ...$arguments): mixed
+{
+    $reflection = new ReflectionMethod($command, $method);
+
+    return $reflection->invoke($command, ...$arguments);
+}
 
 it('downloads a stroke-based icon with --set option', function () use ($strokeSvg): void {
     Http::fake([
@@ -316,4 +330,277 @@ it('writes icons to the configured output path', function () use ($strokeSvg): v
         ->assertSuccessful();
 
     expect(file_exists("{$this->iconDir}/blade-feather-icons/plus.blade.php"))->toBeTrue();
+});
+
+it('prompts for the icon set and imports selected icons interactively', function () use ($strokeSvg, $githubContentsResponse): void {
+    Http::fake([
+        'https://api.github.com/repos/brunocfalcao/blade-feather-icons/contents/resources/svg' => Http::response($githubContentsResponse),
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons')
+        ->expectsQuestion('Which icon package would you like to import from?', 'feather')
+        ->expectsQuestion('Which icon package would you like to import from?', 'blade-feather-icons')
+        ->expectsQuestion('Which icons would you like to import?', 'plus')
+        ->expectsQuestion('Which icons would you like to import?', ['plus'])
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_exists("{$this->iconDir}/blade-feather-icons/plus.blade.php"))->toBeTrue();
+    expect(Cache::get('blade-icons:blade-feather-icons'))->toBe(['arrow-left', 'arrow-right', 'plus']);
+});
+
+it('uses cached icon lists during interactive imports', function () use ($strokeSvg): void {
+    Cache::put('blade-icons:blade-feather-icons', ['arrow-left', 'arrow-right', 'plus'], 86400);
+
+    Http::fake([
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'blade-feather-icons'])
+        ->expectsQuestion('Which icons would you like to import?', 'plus')
+        ->expectsQuestion('Which icons would you like to import?', ['plus'])
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'https://api.github.com/'));
+    expect(file_exists("{$this->iconDir}/blade-feather-icons/plus.blade.php"))->toBeTrue();
+});
+
+it('refreshes cached icon lists when the fresh option is used', function () use ($strokeSvg, $githubContentsResponse): void {
+    Cache::put('blade-icons:blade-feather-icons', ['stale-icon'], 86400);
+
+    Http::fake([
+        'https://api.github.com/repos/brunocfalcao/blade-feather-icons/contents/resources/svg' => Http::response($githubContentsResponse),
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'blade-feather-icons', '--fresh' => true])
+        ->expectsQuestion('Which icons would you like to import?', 'plus')
+        ->expectsQuestion('Which icons would you like to import?', ['plus'])
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(Cache::get('blade-icons:blade-feather-icons'))->toBe(['arrow-left', 'arrow-right', 'plus']);
+});
+
+it('falls back to manual entry when the github api returns an error response', function () use ($strokeSvg): void {
+    Http::fake([
+        'https://api.github.com/*' => Http::response('Server error', 500),
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'blade-feather-icons'])
+        ->expectsPromptsWarning('Could not fetch icon list from GitHub. You can still type the icon name manually.')
+        ->expectsPromptsInfo('Browse available icons at: https://github.com/brunocfalcao/blade-feather-icons')
+        ->expectsQuestion('Which icon would you like to import?', 'plus')
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_exists("{$this->iconDir}/blade-feather-icons/plus.blade.php"))->toBeTrue();
+});
+
+it('shows an error when the icon download connection fails', function (): void {
+    Http::fake([
+        '*' => Http::failedConnection(),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['icons' => ['plus'], '--set' => 'blade-feather-icons'])
+        ->expectsPromptsError("Could not fetch icon 'plus' from Blade Feather Icons.")
+        ->expectsOutputToContain('Browse available icons at: https://github.com/brunocfalcao/blade-feather-icons')
+        ->assertSuccessful();
+});
+
+it('can switch to another icon package during an interactive session', function () use ($strokeSvg, $fillSvg, $githubContentsResponse): void {
+    Http::fake([
+        'https://api.github.com/repos/brunocfalcao/blade-feather-icons/contents/resources/svg' => Http::response($githubContentsResponse),
+        'https://api.github.com/repos/davidhsianturi/blade-bootstrap-icons/contents/resources/svg' => Http::response([
+            ['name' => 'circle.svg', 'type' => 'file'],
+        ]),
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+        'https://raw.githubusercontent.com/davidhsianturi/blade-bootstrap-icons/refs/heads/main/resources/svg/circle.svg' => Http::response($fillSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'blade-feather-icons'])
+        ->expectsQuestion('Which icons would you like to import?', 'plus')
+        ->expectsQuestion('Which icons would you like to import?', ['plus'])
+        ->expectsQuestion('Would you like to import more icons?', 'other')
+        ->expectsQuestion('Which icon package would you like to import from?', 'bootstrap')
+        ->expectsQuestion('Which icon package would you like to import from?', 'blade-bootstrap-icons')
+        ->expectsQuestion('Which icons would you like to import?', 'circle')
+        ->expectsQuestion('Which icons would you like to import?', ['circle'])
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_exists("{$this->iconDir}/blade-feather-icons/plus.blade.php"))->toBeTrue();
+    expect(file_exists("{$this->iconDir}/blade-bootstrap-icons/circle.blade.php"))->toBeTrue();
+});
+
+it('skips already published icons in interactive mode when override is declined', function () use ($strokeSvg): void {
+    Cache::put('blade-icons:blade-feather-icons', ['plus'], 86400);
+
+    Http::fake([
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['icons' => ['plus'], '--set' => 'blade-feather-icons'])
+        ->assertSuccessful();
+
+    $file = "{$this->iconDir}/blade-feather-icons/plus.blade.php";
+    $originalContent = file_get_contents($file);
+    file_put_contents("{$this->iconDir}/blade-feather-icons/readme.txt", 'ignore me');
+
+    $this->artisan('flux:blade-icons', ['--set' => 'blade-feather-icons'])
+        ->expectsQuestion('Which icons would you like to import?', 'plus')
+        ->expectsQuestion('Which icons would you like to import?', ['plus'])
+        ->expectsConfirmation("Icon 'plus' is already published. Override?", 'no')
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_get_contents($file))->toBe($originalContent);
+});
+
+it('returns success when a selected icon package cannot be resolved after prompting', function (): void {
+    $registry = new readonly class(config()) extends \Elemind\FluxBladeIcons\IconSetRegistry
+    {
+        public function all(): array
+        {
+            return ['broken-set' => ['name' => 'Broken Set', 'url' => 'https://example.com', 'svg' => 'https://example.com/svg/']];
+        }
+
+        public function get(string $key): ?array
+        {
+            return null;
+        }
+
+        public function has(string $key): bool
+        {
+            return true;
+        }
+
+        public function keys(): array
+        {
+            return ['broken-set'];
+        }
+
+        public function searchByName(string $query): array
+        {
+            return ['broken-set' => 'Broken Set'];
+        }
+    };
+
+    $command = new FluxBladeIconsCommand(
+        app(\Illuminate\Filesystem\Filesystem::class),
+        app(\Elemind\FluxBladeIcons\IconBladeGenerator::class),
+        $registry,
+        app(\Elemind\FluxBladeIcons\IconListCache::class),
+    );
+    $command->setLaravel(app());
+
+    $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
+
+    expect($tester->execute(['icons' => ['plus'], '--set' => 'broken-set']))->toBe(0);
+    expect($tester->getDisplay())->toContain('Unknown icon set: broken-set');
+});
+
+it('returns success when switching to another package that cannot be resolved', function () use ($strokeSvg): void {
+    $registry = new readonly class(config()) extends \Elemind\FluxBladeIcons\IconSetRegistry
+    {
+        public function all(): array
+        {
+            return [
+                'working-set' => [
+                    'name' => 'Working Set',
+                    'url' => 'https://icons.example.com',
+                    'svg' => 'https://cdn.example.com/icons/',
+                ],
+                'broken-set' => [
+                    'name' => 'Broken Set',
+                    'url' => 'https://broken.example.com',
+                    'svg' => 'https://broken.example.com/icons/',
+                ],
+            ];
+        }
+
+        public function get(string $key): ?array
+        {
+            return $key === 'working-set'
+                ? [
+                    'name' => 'Working Set',
+                    'url' => 'https://icons.example.com',
+                    'svg' => 'https://cdn.example.com/icons/',
+                ]
+                : null;
+        }
+
+        public function has(string $key): bool
+        {
+            return $key === 'working-set';
+        }
+
+        public function keys(): array
+        {
+            return ['working-set', 'broken-set'];
+        }
+
+        public function searchByName(string $query): array
+        {
+            return ['broken-set' => 'Broken Set'];
+        }
+    };
+
+    Http::fake([
+        'https://cdn.example.com/icons/camera.svg' => Http::response($strokeSvg),
+    ]);
+
+    $command = new FluxBladeIconsCommand(
+        app(\Illuminate\Filesystem\Filesystem::class),
+        app(\Elemind\FluxBladeIcons\IconBladeGenerator::class),
+        $registry,
+        app(\Elemind\FluxBladeIcons\IconListCache::class),
+    );
+    $command->setLaravel(app());
+
+    $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
+    $tester->setInputs(['camera', 'other', 'broken', 'broken-set']);
+
+    expect($tester->execute(['--set' => 'working-set'], ['interactive' => true]))->toBe(0);
+    expect($tester->getDisplay())
+        ->toContain('This icon set is not hosted on GitHub. You can still type the icon name manually.')
+        ->toContain('Browse available icons at: https://icons.example.com')
+        ->toContain('Unknown icon set: broken-set');
+});
+
+it('returns null when fetching icons from a failing directory endpoint', function (): void {
+    Http::fake([
+        'api.github.com/*' => Http::response('Server error', 500),
+    ]);
+
+    $command = app(FluxBladeIconsCommand::class);
+
+    expect(invokeCommandMethod($command, 'fetchDirectoryIcons', 'https://api.github.com/repos/test/test/contents/resources/svg'))
+        ->toBeNull();
+});
+
+it('returns published blade icons from disk in sorted order', function (): void {
+    $directory = "{$this->iconDir}/blade-feather-icons";
+
+    mkdir($directory, 0777, true);
+    mkdir("{$directory}/outline", 0777, true);
+
+    file_put_contents("{$directory}/zeta.blade.php", '<svg />');
+    file_put_contents("{$directory}/outline/alpha.blade.php", '<svg />');
+    file_put_contents("{$directory}/notes.txt", 'ignore me');
+
+    $command = app(FluxBladeIconsCommand::class);
+
+    expect(invokeCommandMethod($command, 'getPublishedIcons', 'blade-feather-icons'))
+        ->toBe(['outline/alpha', 'zeta']);
+});
+
+it('returns the configured base output path when no child path is provided', function (): void {
+    $command = app(FluxBladeIconsCommand::class);
+
+    expect(invokeCommandMethod($command, 'outputPath'))
+        ->toBe($this->iconDir);
 });

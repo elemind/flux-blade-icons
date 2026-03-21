@@ -94,10 +94,13 @@ class FluxBladeIconsCommand extends Command
             if ($iconList !== []) {
                 $icons = multisearch(
                     label: 'Which icons would you like to import?',
-                    options: fn (string $value) => collect($iconList)
-                        ->when($value !== '', fn ($collection) => $collection->filter(
-                            fn (string $name): bool => str($name)->lower()->contains(str($value)->lower()->toString())
-                        ))
+                    options: fn (string|array $value) => collect($iconList)
+                        ->when(
+                            ($query = is_array($value) ? '' : $value) !== '',
+                            fn ($collection) => $collection->filter(
+                                fn (string $name): bool => str($name)->lower()->contains(str($query)->lower()->toString())
+                            )
+                        )
                         ->mapWithKeys(fn (string $name): array => [
                             $name => in_array($name, $publishedIcons, true)
                                 ? "{$name} (published)"
