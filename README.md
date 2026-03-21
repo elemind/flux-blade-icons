@@ -23,13 +23,6 @@ You can install the package via composer:
 composer require elemind/flux-blade-icons
 ```
 
-You can publish and run the migrations with:
-
-```bash
-php artisan vendor:publish --tag="flux-blade-icons-migrations"
-php artisan migrate
-```
-
 You can publish the config file with:
 
 ```bash
@@ -63,17 +56,21 @@ php artisan flux:blade-icons:clear-cache
 php artisan flux:blade-icons:clear-cache --set=blade-feather-icons
 ```
 
-Optionally, you can publish the views using
-
-```bash
-php artisan vendor:publish --tag="flux-blade-icons-views"
-```
-
 ## Usage
 
-```php
-$fluxBladeIcons = new Elemind\FluxBladeIcons();
-echo $fluxBladeIcons->echoPhrase('Hello, Elemind!');
+Generate one or more Flux Blade icon components from the configured registry:
+
+```bash
+php artisan flux:blade-icons
+php artisan flux:blade-icons academic-cap
+php artisan flux:blade-icons academic-cap --set=heroicons
+```
+
+Clear the cached icon lists when you want to refresh remote package metadata:
+
+```bash
+php artisan flux:blade-icons:clear-cache
+php artisan flux:blade-icons:clear-cache --set=blade-feather-icons
 ```
 
 ## Testing

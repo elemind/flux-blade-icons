@@ -63,10 +63,7 @@
         "laravel": {
             "providers": [
                 "Elemind\\FluxBladeIcons\\FluxBladeIconsServiceProvider"
-            ],
-            "aliases": {
-                "FluxBladeIcons": "Elemind\\FluxBladeIcons\\Facades\\FluxBladeIcons"
-            }
+            ]
         }
     },
     "minimum-stability": "dev",
