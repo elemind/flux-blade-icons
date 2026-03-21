@@ -54,6 +54,7 @@ return [
 ```
 
 Use `icon_sets` to add your own packages or override one of the built-in keys without editing the package defaults.
+If a custom package is not hosted on GitHub, or the GitHub API is temporarily unavailable, the import command falls back to manual icon entry and will show an error if the requested icon does not exist.
 
 Optionally, you can publish the views using
 

@@ -31,10 +31,12 @@ beforeEach(function (): void {
     $this->iconDir = storage_path('framework/testing/flux-blade-icons');
 
     config()->set('flux-blade-icons.output_path', $this->iconDir);
+    config()->set('flux-blade-icons.icon_sets', []);
 
     Cache::forget('blade-icons:blade-feather-icons');
     Cache::forget('blade-icons:blade-bootstrap-icons');
     Cache::forget('blade-icons:blade-akar-icons');
+    Cache::forget('blade-icons:custom-icons');
 });
 
 afterEach(function (): void {
@@ -146,6 +148,53 @@ it('uses cached icon list without making API calls', function (): void {
     expect(Cache::get('blade-icons:blade-feather-icons'))->toBe(['arrow-left', 'arrow-right', 'plus']);
 });
 
+it('falls back to manual icon entry for non-github icon sets', function () use ($strokeSvg): void {
+    config()->set('flux-blade-icons.icon_sets', [
+        'custom-icons' => [
+            'name' => 'Custom Icons',
+            'url' => 'https://icons.example.com',
+            'svg' => 'https://cdn.example.com/icons/',
+        ],
+    ]);
+
+    Http::fake([
+        'https://cdn.example.com/icons/camera.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'custom-icons'])
+        ->expectsPromptsInfo('This icon set is not hosted on GitHub. You can still type the icon name manually.')
+        ->expectsPromptsInfo('Browse available icons at: https://icons.example.com')
+        ->expectsQuestion('Which icon would you like to import?', 'camera')
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_exists("{$this->iconDir}/custom-icons/camera.blade.php"))->toBeTrue();
+});
+
+it('shows an explicit error when a manually entered icon does not exist', function (): void {
+    config()->set('flux-blade-icons.icon_sets', [
+        'custom-icons' => [
+            'name' => 'Custom Icons',
+            'url' => 'https://icons.example.com',
+            'svg' => 'https://cdn.example.com/icons/',
+        ],
+    ]);
+
+    Http::fake([
+        'https://cdn.example.com/icons/missing-icon.svg' => Http::response('Not Found', 404),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'custom-icons'])
+        ->expectsPromptsInfo('This icon set is not hosted on GitHub. You can still type the icon name manually.')
+        ->expectsPromptsInfo('Browse available icons at: https://icons.example.com')
+        ->expectsQuestion('Which icon would you like to import?', 'missing-icon')
+        ->expectsPromptsError("Icon 'missing-icon' was not found in Custom Icons.")
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_exists("{$this->iconDir}/custom-icons/missing-icon.blade.php"))->toBeFalse();
+});
+
 it('filters out non-svg files from icon list', function () use ($githubContentsResponse): void {
     Http::fake([
         'api.github.com/*' => Http::response($githubContentsResponse),
@@ -164,6 +213,22 @@ it('filters out non-svg files from icon list', function () use ($githubContentsR
         ->toContain('plus')
         ->not->toContain('README.md')
         ->not->toContain('README');
+});
+
+it('falls back to manual icon entry when the github api is unreachable', function () use ($strokeSvg): void {
+    Http::fake([
+        'https://api.github.com/*' => Http::failedConnection(),
+        'https://raw.githubusercontent.com/brunocfalcao/blade-feather-icons/refs/heads/main/resources/svg/plus.svg' => Http::response($strokeSvg),
+    ]);
+
+    $this->artisan('flux:blade-icons', ['--set' => 'blade-feather-icons'])
+        ->expectsPromptsWarning('Could not reach the GitHub API. You can still type the icon name manually.')
+        ->expectsPromptsInfo('Browse available icons at: https://github.com/brunocfalcao/blade-feather-icons')
+        ->expectsQuestion('Which icon would you like to import?', 'plus')
+        ->expectsQuestion('Would you like to import more icons?', 'done')
+        ->assertSuccessful();
+
+    expect(file_exists("{$this->iconDir}/blade-feather-icons/plus.blade.php"))->toBeTrue();
 });
 
 it('handles subdirectories in icon packages', function () use ($githubContentsWithSubdirs, $githubSubdirResponse): void {

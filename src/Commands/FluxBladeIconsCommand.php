@@ -24,18 +24,14 @@ use function Laravel\Prompts\spin;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\warning;
 
-
-
 class FluxBladeIconsCommand extends Command
 {
-
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
     protected $signature = 'flux:blade-icons {icons?*} {--set= : The icon set slug} {--fresh : Bypass icon list cache}';
-
 
     /**
      * The console command description.
@@ -167,13 +163,24 @@ class FluxBladeIconsCommand extends Command
      */
     protected function publishIcon(string $icon, string $setKey, array $iconSet): void
     {
-        $response = spin(
-            callback: fn () => Http::get($iconSet['svg'].$icon.'.svg'),
-            message: 'Fetching icon...',
-        );
+        try {
+            $response = spin(
+                callback: fn () => Http::get($iconSet['svg'].$icon.'.svg'),
+                message: 'Fetching icon...',
+            );
+        } catch (ConnectionException) {
+            error("Could not fetch icon '{$icon}' from {$iconSet['name']}.");
+            note("Browse available icons at: {$iconSet['url']}");
+
+            return;
+        }
 
         if ($response->failed()) {
-            error("Failed to fetch icon: {$icon}");
+            error(
+                $response->status() === 404
+                    ? "Icon '{$icon}' was not found in {$iconSet['name']}."
+                    : "Could not fetch icon '{$icon}' from {$iconSet['name']}."
+            );
             note("Browse available icons at: {$iconSet['url']}");
 
             return;
@@ -205,30 +212,44 @@ class FluxBladeIconsCommand extends Command
             Cache::forget($cacheKey);
         }
 
-        return Cache::remember($cacheKey, $this->cacheTtl(), function () use ($iconSet) {
-            $ownerRepo = $this->extractOwnerRepo($iconSet['url']);
+        $cachedIcons = Cache::get($cacheKey);
 
-            if ($ownerRepo === null) {
-                return [];
-            }
+        if (is_array($cachedIcons)) {
+            return $cachedIcons;
+        }
 
+        $ownerRepo = $this->extractOwnerRepo($iconSet['url']);
+
+        if ($ownerRepo === null) {
+            info('This icon set is not hosted on GitHub. You can still type the icon name manually.');
+            Cache::put($cacheKey, [], $this->cacheTtl());
+
+            return [];
+        }
+
+        try {
             $icons = spin(
                 callback: fn () => $this->fetchDirectoryIcons(
                     "https://api.github.com/repos/{$ownerRepo}/contents/resources/svg"
                 ),
                 message: 'Fetching icon list...',
             );
+        } catch (ConnectionException) {
+            warning('Could not reach the GitHub API. You can still type the icon name manually.');
 
-            if ($icons === null) {
-                warning('Could not fetch icon list. You can still type the icon name manually.');
+            return [];
+        }
 
-                return [];
-            }
+        if ($icons === null) {
+            warning('Could not fetch icon list from GitHub. You can still type the icon name manually.');
 
-            sort($icons);
+            return [];
+        }
 
-            return $icons;
-        });
+        sort($icons);
+        Cache::put($cacheKey, $icons, $this->cacheTtl());
+
+        return $icons;
     }
 
     /**
