@@ -2,10 +2,45 @@
 
 declare(strict_types=1);
 
-// config for Elemind/FluxBladeIcons
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Output Path
+    |--------------------------------------------------------------------------
+    |
+    | This path determines where imported Flux-compatible Blade icon views
+    | will be written. Each icon set will be stored in its own directory
+    | within this location using the icon set key as the folder name.
+    |
+    */
+
     'output_path' => resource_path('views/flux/icon'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache TTL
+    |--------------------------------------------------------------------------
+    |
+    | Here you may define how long, in seconds, the fetched icon lists
+    | should remain cached. These cached lists are used to speed up the
+    | interactive import experience when browsing available icons.
+    |
+    */
+
     'cache_ttl' => 86400,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Icon Sets
+    |--------------------------------------------------------------------------
+    |
+    | These icon sets are shipped with the package out of the box. Each set
+    | should define a display name, a package URL, and the base SVG URL used
+    | to fetch individual icons during import.
+    |
+    */
+
     'default_icon_sets' => [
         'blade-academicons' => [
             'name' => 'Blade Academicons',
@@ -459,5 +494,17 @@ return [
         ],
 
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Custom Icon Sets
+    |--------------------------------------------------------------------------
+    |
+    | You may define your own icon sets here or override one of the built-in
+    | keys above. Each item should use the same structure as the defaults:
+    | "name", "url", and "svg".
+    |
+    */
+
     'icon_sets' => [],
 ];
