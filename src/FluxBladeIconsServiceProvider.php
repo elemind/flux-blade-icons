@@ -2,9 +2,10 @@
 
 namespace Elemind\FluxBladeIcons;
 
+use Elemind\FluxBladeIcons\Commands\FluxBladeIconsClearCacheCommand;
+use Elemind\FluxBladeIcons\Commands\FluxBladeIconsCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use Elemind\FluxBladeIcons\Commands\FluxBladeIconsCommand;
 
 class FluxBladeIconsServiceProvider extends PackageServiceProvider
 {
@@ -18,6 +19,9 @@ class FluxBladeIconsServiceProvider extends PackageServiceProvider
         $package
             ->name('flux-blade-icons')
             ->hasConfigFile()
-            ->hasCommand(FluxBladeIconsCommand::class);
+            ->hasCommands([
+                FluxBladeIconsCommand::class,
+                FluxBladeIconsClearCacheCommand::class,
+            ]);
     }
 }

@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Elemind\FluxBladeIcons\Commands;
 
 use Elemind\FluxBladeIcons\IconBladeGenerator;
+use Elemind\FluxBladeIcons\IconListCache;
 use Elemind\FluxBladeIcons\IconSetRegistry;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 use function Laravel\Prompts\confirm;
@@ -44,6 +44,7 @@ class FluxBladeIconsCommand extends Command
         private readonly Filesystem $filesystem,
         private readonly IconBladeGenerator $generator,
         private readonly IconSetRegistry $iconSets,
+        private readonly IconListCache $iconListCache,
     ) {
         parent::__construct();
     }
@@ -206,15 +207,13 @@ class FluxBladeIconsCommand extends Command
      */
     protected function fetchIconList(string $setKey, array $iconSet): array
     {
-        $cacheKey = "blade-icons:{$setKey}";
-
         if ($this->option('fresh')) {
-            Cache::forget($cacheKey);
+            $this->iconListCache->forget($setKey);
         }
 
-        $cachedIcons = Cache::get($cacheKey);
+        $cachedIcons = $this->iconListCache->get($setKey);
 
-        if (is_array($cachedIcons)) {
+        if ($cachedIcons !== null) {
             return $cachedIcons;
         }
 
@@ -222,7 +221,7 @@ class FluxBladeIconsCommand extends Command
 
         if ($ownerRepo === null) {
             info('This icon set is not hosted on GitHub. You can still type the icon name manually.');
-            Cache::put($cacheKey, [], $this->cacheTtl());
+            $this->iconListCache->put($setKey, [], $this->cacheTtl());
 
             return [];
         }
@@ -247,7 +246,7 @@ class FluxBladeIconsCommand extends Command
         }
 
         sort($icons);
-        Cache::put($cacheKey, $icons, $this->cacheTtl());
+        $this->iconListCache->put($setKey, $icons, $this->cacheTtl());
 
         return $icons;
     }

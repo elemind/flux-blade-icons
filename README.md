@@ -56,6 +56,13 @@ return [
 Use `icon_sets` to add your own packages or override one of the built-in keys without editing the package defaults.
 If a custom package is not hosted on GitHub, or the GitHub API is temporarily unavailable, the import command falls back to manual icon entry and will show an error if the requested icon does not exist.
 
+You can also clear the cached icon lists used by the importer:
+
+```bash
+php artisan flux:blade-icons:clear-cache
+php artisan flux:blade-icons:clear-cache --set=blade-feather-icons
+```
+
 Optionally, you can publish the views using
 
 ```bash
