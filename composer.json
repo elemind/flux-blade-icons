@@ -1,13 +1,19 @@
 {
     "name": "elemind/flux-blade-icons",
-    "description": "This is my package flux-blade-icons",
+    "description": "Import third-party Blade icon packages into Flux by generating Flux-compatible Blade icon views.",
     "keywords": [
-        "Elemind",
         "laravel",
-        "flux-blade-icons"
+        "flux",
+        "blade-icons",
+        "icons",
+        "svg"
     ],
     "homepage": "https://github.com/elemind/flux-blade-icons",
     "license": "MIT",
+    "support": {
+        "issues": "https://github.com/elemind/flux-blade-icons/issues",
+        "source": "https://github.com/elemind/flux-blade-icons"
+    },
     "authors": [
         {
             "name": "Tiziano Zonta",
