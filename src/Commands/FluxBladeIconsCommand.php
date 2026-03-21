@@ -1,19 +1,338 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Elemind\FluxBladeIcons\Commands;
 
+use Elemind\FluxBladeIcons\IconBladeGenerator;
+use Elemind\FluxBladeIcons\IconSetRegistry;
 use Illuminate\Console\Command;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\intro;
+use function Laravel\Prompts\multisearch;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\search;
+use function Laravel\Prompts\select;
+use function Laravel\Prompts\spin;
+use function Laravel\Prompts\text;
+use function Laravel\Prompts\warning;
+
+
 
 class FluxBladeIconsCommand extends Command
 {
-    public $signature = 'flux-blade-icons';
 
-    public $description = 'My command';
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'flux:blade-icons {icons?*} {--set= : The icon set slug} {--fresh : Bypass icon list cache}';
+
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'Import third-party icons from Blade icon packages into Flux.';
+
+    public function __construct(
+        private readonly Filesystem $filesystem,
+        private readonly IconBladeGenerator $generator,
+        private readonly IconSetRegistry $iconSets,
+    ) {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
-        $this->comment('All done');
+        $setKey = $this->option('set');
+
+        if ($setKey !== null) {
+            if (! $this->iconSets->has($setKey)) {
+                error("Unknown icon set: {$setKey}");
+                info('Available sets: '.implode(', ', $this->iconSets->keys()));
+
+                return self::SUCCESS;
+            }
+        } else {
+            $setKey = $this->promptForIconSet();
+        }
+
+        $iconSet = $this->iconSets->get($setKey);
+
+        if ($iconSet === null) {
+            error("Unknown icon set: {$setKey}");
+
+            return self::SUCCESS;
+        }
+
+        if (count($icons = $this->argument('icons')) > 0) {
+            foreach ($icons as $icon) {
+                if ($this->isAlreadyPublished($icon, $setKey) && ! confirm("Icon '{$icon}' is already published. Override?")) {
+                    continue;
+                }
+
+                $this->publishIcon($icon, $setKey, $iconSet);
+            }
+
+            return self::SUCCESS;
+        }
+
+        intro("Importing icons from {$iconSet['name']}");
+
+        $iconList = $this->fetchIconList($setKey, $iconSet);
+
+        while (true) {
+            $publishedIcons = $this->getPublishedIcons($setKey);
+
+            if ($iconList !== []) {
+                $icons = multisearch(
+                    label: 'Which icons would you like to import?',
+                    options: fn (string $value) => collect($iconList)
+                        ->when($value !== '', fn ($collection) => $collection->filter(
+                            fn (string $name): bool => str($name)->lower()->contains(str($value)->lower())
+                        ))
+                        ->mapWithKeys(fn (string $name): array => [
+                            $name => in_array($name, $publishedIcons, true)
+                                ? "{$name} (published)"
+                                : $name,
+                        ])
+                        ->all(),
+                    placeholder: 'Type to search icons...',
+                    required: 'Select at least one icon.',
+                    hint: 'Use the space bar to select options.',
+                );
+            } else {
+                info("Browse available icons at: {$iconSet['url']}");
+
+                $icon = text(
+                    label: 'Which icon would you like to import?',
+                    placeholder: 'e.g. arrow-left',
+                    required: 'An icon name is required.',
+                );
+
+                $icons = [$icon];
+            }
+
+            foreach ($icons as $icon) {
+                if ($this->isAlreadyPublished($icon, $setKey) && ! confirm("Icon '{$icon}' is already published. Override?")) {
+                    continue;
+                }
+
+                $this->publishIcon($icon, $setKey, $iconSet);
+            }
+
+            $next = select(
+                label: 'Would you like to import more icons?',
+                options: [
+                    'same' => "Yes, from {$iconSet['name']}",
+                    'other' => 'Yes, from a different package',
+                    'done' => 'No, I\'m done',
+                ],
+            );
+
+            if ($next === 'done') {
+                break;
+            }
+
+            if ($next === 'other') {
+                $setKey = $this->promptForIconSet();
+                $iconSet = $this->iconSets->get($setKey);
+
+                if ($iconSet === null) {
+                    error("Unknown icon set: {$setKey}");
+
+                    return self::SUCCESS;
+                }
+
+                intro("Importing icons from {$iconSet['name']}");
+                $iconList = $this->fetchIconList($setKey, $iconSet);
+            }
+        }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array{name: string, url: string, svg: string}  $iconSet
+     */
+    protected function publishIcon(string $icon, string $setKey, array $iconSet): void
+    {
+        $response = spin(
+            callback: fn () => Http::get($iconSet['svg'].$icon.'.svg'),
+            message: 'Fetching icon...',
+        );
+
+        if ($response->failed()) {
+            error("Failed to fetch icon: {$icon}");
+            note("Browse available icons at: {$iconSet['url']}");
+
+            return;
+        }
+
+        $svg = $response->body();
+
+        $directory = $this->outputPath("{$setKey}/".dirname($icon));
+        $this->filesystem->ensureDirectoryExists($directory);
+
+        $destinationAsFile = $this->outputPath("{$setKey}/{$icon}.blade.php");
+
+        $this->filesystem->put($destinationAsFile, $this->generator->generateBlade($svg, $iconSet));
+
+        $usageName = str_replace('/', '.', $icon);
+        info("Published icon: {$destinationAsFile}");
+        note("Usage: <flux:icon.{$setKey}.{$usageName} />");
+    }
+
+    /**
+     * @param  array{name: string, url: string, svg: string}  $iconSet
+     * @return list<string>
+     */
+    protected function fetchIconList(string $setKey, array $iconSet): array
+    {
+        $cacheKey = "blade-icons:{$setKey}";
+
+        if ($this->option('fresh')) {
+            Cache::forget($cacheKey);
+        }
+
+        return Cache::remember($cacheKey, $this->cacheTtl(), function () use ($iconSet) {
+            $ownerRepo = $this->extractOwnerRepo($iconSet['url']);
+
+            if ($ownerRepo === null) {
+                return [];
+            }
+
+            $icons = spin(
+                callback: fn () => $this->fetchDirectoryIcons(
+                    "https://api.github.com/repos/{$ownerRepo}/contents/resources/svg"
+                ),
+                message: 'Fetching icon list...',
+            );
+
+            if ($icons === null) {
+                warning('Could not fetch icon list. You can still type the icon name manually.');
+
+                return [];
+            }
+
+            sort($icons);
+
+            return $icons;
+        });
+    }
+
+    /**
+     * @return list<string>|null
+     *
+     * @throws ConnectionException
+     */
+    protected function fetchDirectoryIcons(string $apiUrl, string $prefix = ''): ?array
+    {
+        $response = Http::withHeaders(['Accept' => 'application/vnd.github.v3+json'])
+            ->get($apiUrl);
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        $icons = [];
+
+        foreach ($response->json() as $item) {
+            if ($item['type'] === 'file' && str_ends_with($item['name'], '.svg')) {
+                $name = str_replace('.svg', '', $item['name']);
+                $icons[] = $prefix !== '' ? "{$prefix}/{$name}" : $name;
+            }
+
+            if ($item['type'] === 'dir') {
+                $subIcons = $this->fetchDirectoryIcons(
+                    $item['url'],
+                    $prefix !== '' ? "{$prefix}/{$item['name']}" : $item['name']
+                );
+
+                if ($subIcons !== null) {
+                    $icons = [...$icons, ...$subIcons];
+                }
+            }
+        }
+
+        return $icons;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function getPublishedIcons(string $setKey): array
+    {
+        $directory = $this->outputPath($setKey);
+
+        if (! $this->filesystem->isDirectory($directory)) {
+            return [];
+        }
+
+        $icons = [];
+
+        foreach ($this->filesystem->allFiles($directory) as $file) {
+            if (str_ends_with($file->getFilename(), '.blade.php')) {
+                $icons[] = str_replace([$directory.'/', '.blade.php'], '', $file->getPathname());
+            }
+        }
+
+        sort($icons);
+
+        return $icons;
+    }
+
+    protected function extractOwnerRepo(string $url): ?string
+    {
+        if (preg_match('/github\.com\/([^\/]+\/[^\/]+)/', $url, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    private function promptForIconSet(): string
+    {
+        return search(
+            label: 'Which icon package would you like to import from?',
+            options: fn (string $value) => $this->iconSets->searchByName($value),
+            placeholder: 'Type to search icon packages...',
+        );
+    }
+
+    private function isAlreadyPublished(string $icon, string $setKey): bool
+    {
+        return $this->filesystem->exists(
+            $this->outputPath("{$setKey}/{$icon}.blade.php")
+        );
+    }
+
+    private function outputPath(string $path = ''): string
+    {
+        $basePath = rtrim(
+            (string) config('flux-blade-icons.output_path', resource_path('views/flux/icon')),
+            DIRECTORY_SEPARATOR
+        );
+
+        if ($path === '') {
+            return $basePath;
+        }
+
+        return $basePath.DIRECTORY_SEPARATOR.ltrim($path, DIRECTORY_SEPARATOR);
+    }
+
+    private function cacheTtl(): int
+    {
+        return (int) config('flux-blade-icons.cache_ttl', 86400);
     }
 }

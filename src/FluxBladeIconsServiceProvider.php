@@ -18,8 +18,6 @@ class FluxBladeIconsServiceProvider extends PackageServiceProvider
         $package
             ->name('flux-blade-icons')
             ->hasConfigFile()
-            ->hasViews()
-            ->hasMigration('create_flux_blade_icons_table')
             ->hasCommand(FluxBladeIconsCommand::class);
     }
 }
