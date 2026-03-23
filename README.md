@@ -119,6 +119,8 @@ Choose the icon package first, then search and select icons interactively:
 php artisan flux:blade-icons
 ```
 
+![Interactive import screenshot](docs/images/screenshot01.png)
+
 ### Import a single icon from a specific set
 
 ```bash
