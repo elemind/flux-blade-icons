@@ -29,24 +29,13 @@ $githubSubdirResponse = [
 
 function cleanupIconDirectory(string $iconDir): void
 {
-    if (! is_dir($iconDir)) {
-        return;
-    }
+    (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($iconDir);
 
-    $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($iconDir, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
-
-    foreach ($files as $file) {
-        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-    }
-
-    rmdir($iconDir);
+    clearstatcache();
 }
 
 beforeEach(function (): void {
-    $this->iconDir = storage_path('framework/testing/flux-blade-icons');
+    $this->iconDir = storage_path('framework/testing/flux-blade-icons/'.str_replace('.', '', uniqid('run-', true)));
 
     cleanupIconDirectory($this->iconDir);
 
@@ -596,6 +585,13 @@ it('returns published blade icons from disk in sorted order', function (): void 
 
     expect(invokeCommandMethod($command, 'getPublishedIcons', 'blade-feather-icons'))
         ->toBe(['outline/alpha', 'zeta']);
+});
+
+it('normalizes published icon paths that use windows separators', function (): void {
+    $command = app(FluxBladeIconsCommand::class);
+
+    expect(invokeCommandMethod($command, 'normalizePublishedIconPath', 'outline\\alpha.blade.php'))
+        ->toBe('outline/alpha');
 });
 
 it('returns the configured base output path when no child path is provided', function (): void {

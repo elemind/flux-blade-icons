@@ -98,9 +98,9 @@ class FluxBladeIconsCommand extends Command
             if ($iconList !== []) {
                 $icons = multisearch(
                     label: 'Which icons would you like to import?',
-                    options: fn (string|array $value) => collect($iconList)
+                    options: fn (string $value) => collect($iconList)
                         ->when(
-                            ($query = is_array($value) ? '' : $value) !== '',
+                            ($query = $value) !== '',
                             fn ($collection) => $collection->filter(
                                 fn (string $name): bool => str($name)->lower()->contains(str($query)->lower()->toString())
                             )
@@ -237,8 +237,15 @@ class FluxBladeIconsCommand extends Command
 
         $svg = $response->body();
 
-        $directory = $this->outputPath("{$setKey}/".dirname($icon));
-        $this->filesystem->ensureDirectoryExists($directory);
+        $directory = $this->outputPath($setKey);
+
+        if (($subdirectory = dirname($icon)) !== '.') {
+            $directory = $this->outputPath("{$setKey}/{$subdirectory}");
+        }
+
+        if (! $this->filesystem->isDirectory($directory)) {
+            $this->filesystem->ensureDirectoryExists($directory);
+        }
 
         $destinationAsFile = $this->outputPath("{$setKey}/{$icon}.blade.php");
 
@@ -352,13 +359,18 @@ class FluxBladeIconsCommand extends Command
 
         foreach ($this->filesystem->allFiles($directory) as $file) {
             if (str_ends_with($file->getFilename(), '.blade.php')) {
-                $icons[] = str_replace([$directory.'/', '.blade.php'], '', $file->getPathname());
+                $icons[] = $this->normalizePublishedIconPath($file->getRelativePathname());
             }
         }
 
         sort($icons);
 
         return $icons;
+    }
+
+    private function normalizePublishedIconPath(string $relativePath): string
+    {
+        return str_replace(['\\', '.blade.php'], ['/', ''], $relativePath);
     }
 
     protected function extractOwnerRepo(string $url): ?string
