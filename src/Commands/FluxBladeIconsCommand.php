@@ -24,6 +24,8 @@ use function Laravel\Prompts\spin;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\warning;
 
+use const STDOUT;
+
 class FluxBladeIconsCommand extends Command
 {
     /**
@@ -51,6 +53,8 @@ class FluxBladeIconsCommand extends Command
 
     public function handle(): int
     {
+        $this->displayLogo();
+
         $setKey = $this->option('set');
 
         if ($setKey !== null) {
@@ -160,6 +164,47 @@ class FluxBladeIconsCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function displayLogo(): void
+    {
+        $logoLines = [
+            '  ████████ ██       ██    ██ ██   ██',
+            '  ██       ██       ██    ██  ██ ██ ',
+            '  █████    ██       ██    ██   ███  ',
+            '  ██       ██       ██    ██  ██ ██ ',
+            '  ██       ████████  ██████  ██   ██',
+        ];
+
+        $subtitleLine = '            Blade Icons';
+
+        $gradientColors = [
+            '38;2;200;200;200',
+            '38;2;170;170;170',
+            '38;2;140;140;140',
+            '38;2;110;110;110',
+            '38;2;80;80;80',
+        ];
+
+        $supportsAnsi = stream_isatty(STDOUT);
+
+        $this->line('');
+
+        foreach ($logoLines as $i => $line) {
+            $this->line(
+                $supportsAnsi
+                    ? "\033[{$gradientColors[$i]}m{$line}\033[0m"
+                    : $line
+            );
+        }
+
+        $this->line(
+            $supportsAnsi
+                ? "\033[38;2;130;130;130m{$subtitleLine}\033[0m"
+                : $subtitleLine
+        );
+
+        $this->line('');
     }
 
     /**
