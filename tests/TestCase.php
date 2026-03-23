@@ -2,9 +2,9 @@
 
 namespace Elemind\FluxBladeIcons\Tests;
 
+use Elemind\FluxBladeIcons\FluxBladeIconsServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Orchestra\Testbench\TestCase as Orchestra;
-use Elemind\FluxBladeIcons\FluxBladeIconsServiceProvider;
 
 class TestCase extends Orchestra
 {

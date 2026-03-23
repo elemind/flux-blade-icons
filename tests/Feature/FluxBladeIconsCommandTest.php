@@ -3,8 +3,13 @@
 declare(strict_types=1);
 
 use Elemind\FluxBladeIcons\Commands\FluxBladeIconsCommand;
+use Elemind\FluxBladeIcons\IconBladeGenerator;
+use Elemind\FluxBladeIcons\IconListCache;
+use Elemind\FluxBladeIcons\IconSetRegistry;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Symfony\Component\Console\Tester\CommandTester;
 
 $strokeSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
 
@@ -450,7 +455,7 @@ it('skips already published icons in interactive mode when override is declined'
 });
 
 it('returns success when a selected icon package cannot be resolved after prompting', function (): void {
-    $registry = new readonly class(config()) extends \Elemind\FluxBladeIcons\IconSetRegistry
+    $registry = new readonly class(config()) extends IconSetRegistry
     {
         public function all(): array
         {
@@ -479,21 +484,21 @@ it('returns success when a selected icon package cannot be resolved after prompt
     };
 
     $command = new FluxBladeIconsCommand(
-        app(\Illuminate\Filesystem\Filesystem::class),
-        app(\Elemind\FluxBladeIcons\IconBladeGenerator::class),
+        app(Filesystem::class),
+        app(IconBladeGenerator::class),
         $registry,
-        app(\Elemind\FluxBladeIcons\IconListCache::class),
+        app(IconListCache::class),
     );
     $command->setLaravel(app());
 
-    $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
+    $tester = new CommandTester($command);
 
     expect($tester->execute(['icons' => ['plus'], '--set' => 'broken-set']))->toBe(0);
     expect($tester->getDisplay())->toContain('Unknown icon set: broken-set');
 });
 
 it('returns success when switching to another package that cannot be resolved', function () use ($strokeSvg): void {
-    $registry = new readonly class(config()) extends \Elemind\FluxBladeIcons\IconSetRegistry
+    $registry = new readonly class(config()) extends IconSetRegistry
     {
         public function all(): array
         {
@@ -543,14 +548,14 @@ it('returns success when switching to another package that cannot be resolved', 
     ]);
 
     $command = new FluxBladeIconsCommand(
-        app(\Illuminate\Filesystem\Filesystem::class),
-        app(\Elemind\FluxBladeIcons\IconBladeGenerator::class),
+        app(Filesystem::class),
+        app(IconBladeGenerator::class),
         $registry,
-        app(\Elemind\FluxBladeIcons\IconListCache::class),
+        app(IconListCache::class),
     );
     $command->setLaravel(app());
 
-    $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
+    $tester = new CommandTester($command);
     $tester->setInputs(['camera', 'other', 'broken', 'broken-set']);
 
     expect($tester->execute(['--set' => 'working-set'], ['interactive' => true]))->toBe(0);
