@@ -34,7 +34,7 @@ $githubSubdirResponse = [
 
 function cleanupIconDirectory(string $iconDir): void
 {
-    (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($iconDir);
+    (new Filesystem)->deleteDirectory($iconDir);
 
     clearstatcache();
 }
