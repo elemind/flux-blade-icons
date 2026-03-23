@@ -1,5 +1,10 @@
 # Flux Blade Icons
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/elemind/flux-blade-icons.svg?style=flat-square)](https://packagist.org/packages/elemind/flux-blade-icons)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/elemind/flux-blade-icons/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/elemind/flux-blade-icons/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/elemind/flux-blade-icons/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/elemind/flux-blade-icons/actions?query=workflow%3A"Fix+PHP+code+styling"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/elemind/flux-blade-icons.svg?style=flat-square)](https://packagist.org/packages/elemind/flux-blade-icons)
+
 `flux-blade-icons` imports SVGs from third-party Blade icon packages and generates Flux-compatible Blade icon views inside your Laravel application.
 
 The package is built for projects that already use Flux and want to reuse the Blade icon ecosystem without manually copying SVG files. It ships with a large registry of supported icon packages, lets you add or override icon sets through configuration, caches remote icon lists for the interactive importer, and writes the generated views to your application so they can be versioned with the rest of your codebase.
