@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Elemind\FluxBladeIcons\Commands;
 
+use const STDOUT;
+
 use Elemind\FluxBladeIcons\IconBladeGenerator;
 use Elemind\FluxBladeIcons\IconListCache;
 use Elemind\FluxBladeIcons\IconSetRegistry;
@@ -23,8 +25,6 @@ use function Laravel\Prompts\select;
 use function Laravel\Prompts\spin;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\warning;
-
-use const STDOUT;
 
 class FluxBladeIconsCommand extends Command
 {
