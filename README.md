@@ -120,6 +120,7 @@ php artisan flux:blade-icons
 ```
 
 ![Interactive import screenshot](docs/images/screenshot01.png)
+![Icon galley demo](docs/images/screenshot02.png)
 
 ### Import a single icon from a specific set
 
