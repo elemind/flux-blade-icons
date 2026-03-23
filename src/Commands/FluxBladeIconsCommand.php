@@ -245,7 +245,8 @@ class FluxBladeIconsCommand extends Command
         $this->filesystem->put($destinationAsFile, $this->generator->generateBlade($svg, $iconSet));
 
         $usageName = str_replace('/', '.', $icon);
-        info("Published icon: {$destinationAsFile}");
+        $relativePath = str_replace(base_path().DIRECTORY_SEPARATOR, '', $destinationAsFile);
+        info("Published icon: {$relativePath}");
         note("Usage: <flux:icon.{$setKey}.{$usageName} />");
     }
 
